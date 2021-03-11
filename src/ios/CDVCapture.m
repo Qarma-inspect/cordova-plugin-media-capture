@@ -302,16 +302,14 @@
 - (CDVPluginResult*)processVideo:(NSString*)moviePath forCallbackId:(NSString*)callbackId
 {
     // save the movie to photo album (only avail as of iOS 3.1)
-    BOOL saveToGallery = [options objectForKey:@"save_to_gallery"];
-    if(saveToGallery) {
-        NSLog(@"can save %@: %d ?", moviePath, UIVideoAtPathIsCompatibleWithSavedPhotosAlbum(moviePath));
-        if (&UIVideoAtPathIsCompatibleWithSavedPhotosAlbum != NULL && UIVideoAtPathIsCompatibleWithSavedPhotosAlbum(moviePath) == YES) {
-            NSLog(@"try to save movie");
-            UISaveVideoAtPathToSavedPhotosAlbum(moviePath, nil, nil, nil);
-            NSLog(@"finished saving movie");
-        }
-    }
-    
+
+    // don't need, it should automatically get saved
+     NSLog(@"can save %@: %d ?", moviePath, UIVideoAtPathIsCompatibleWithSavedPhotosAlbum(moviePath));
+    // if (&UIVideoAtPathIsCompatibleWithSavedPhotosAlbum != NULL && UIVideoAtPathIsCompatibleWithSavedPhotosAlbum(moviePath) == YES) {
+        // NSLog(@"try to save movie");
+        // UISaveVideoAtPathToSavedPhotosAlbum(moviePath, nil, nil, nil);
+        // NSLog(@"finished saving movie");
+    // }
     // create MediaFile object
     NSDictionary* fileDict = [self getMediaDictionaryFromPath:moviePath ofType:nil];
     NSArray* fileArray = [NSArray arrayWithObject:fileDict];
