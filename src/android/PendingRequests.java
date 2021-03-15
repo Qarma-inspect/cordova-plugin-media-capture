@@ -161,6 +161,7 @@ public class PendingRequests {
         private static final String LIMIT_KEY = "limit";
         private static final String DURATION_KEY = "duration";
         private static final String QUALITY_KEY = "quality";
+        private static final String SAVE_TO_GALLERY = "saveToGallery";
         private static final String SIZE_KEY = "size";
         private static final String RESULTS_KEY = "results";
 
@@ -182,6 +183,8 @@ public class PendingRequests {
         // Quality level for video capture 0 low, 1 high (CAPTURE_VIDEO only)
         public int size = 5120000;
 
+        public int saveToGallery = 0; 
+
         // The array of results to be returned to the javascript callback on success
         public JSONArray results = new JSONArray();
 
@@ -197,6 +200,7 @@ public class PendingRequests {
                 this.duration = options.optInt("duration", 0);
                 this.quality = options.optInt("quality", 1);
                 this.size = options.optInt("size", 5120000);
+                this.saveToGallery = options.optInt("saveToGallery", 0);
             }
 
             this.requestCode = incrementCurrentReqId();
@@ -210,6 +214,7 @@ public class PendingRequests {
             this.duration = bundle.getInt(DURATION_KEY);
             this.quality = bundle.getInt(QUALITY_KEY);
             this.size = bundle.getInt(SIZE_KEY);
+            this.saveToGallery = bundle.getInt(SAVE_TO_GALLERY);
 
             try {
                 this.results = new JSONArray(bundle.getString(RESULTS_KEY));
@@ -227,6 +232,7 @@ public class PendingRequests {
             bundle.putInt(DURATION_KEY, this.duration);
             bundle.putInt(QUALITY_KEY, this.quality);
             bundle.putInt(SIZE_KEY, this.size);
+            bundle.putInt(SAVE_TO_GALLERY, this.saveToGallery);
             bundle.putString(RESULTS_KEY, this.results.toString());
 
             return bundle;
