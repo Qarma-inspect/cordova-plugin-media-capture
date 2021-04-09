@@ -57,6 +57,8 @@ import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Environment;
 import android.provider.MediaStore;
+import android.support.v4.content.FileProvider;
+import org.apache.cordova.BuildHelper;
 
 public class Capture extends CordovaPlugin {
 
@@ -85,6 +87,9 @@ public class Capture extends CordovaPlugin {
     private int numPics;                            // Number of pictures before capture activity
     private Uri imageUri;
     private Uri videoUri;
+    private String videoAbsolutePath;
+    private String applicationId;
+
 
 //    public void setContext(Context mCtx)
 //    {
@@ -123,6 +128,9 @@ public class Capture extends CordovaPlugin {
 
     @Override
     public boolean execute(String action, JSONArray args, CallbackContext callbackContext) throws JSONException {
+        this.applicationId = (String) BuildHelper.getBuildConfigValue(this.cordova.getActivity(), "APPLICATION_ID");
+        this.applicationId = preferences.getString("applicationId", this.applicationId);
+
         if (action.equals("getFormatData")) {
             JSONObject obj = getFormatData(args.getString(0), args.getString(1));
             callbackContext.success(obj);
@@ -316,10 +324,14 @@ public class Capture extends CordovaPlugin {
             Intent intent = new Intent(android.provider.MediaStore.ACTION_VIDEO_CAPTURE);
 
             if(req.saveToGallery == 0) {
-                ContentResolver contentResolver = this.cordova.getActivity().getContentResolver();
-                ContentValues cv = new ContentValues();
-                videoUri = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, cv);
-                intent.putExtra(android.provider.MediaStore.EXTRA_OUTPUT, videoUri);
+                File movie = new File(getTempDirectoryPath(), "Capture.avi");
+
+                this.videoUri = FileProvider.getUriForFile(this.cordova.getActivity(),
+                    this.applicationId + ".cordova.plugin.camera.provider",
+                    movie);
+                this.videoAbsolutePath = movie.getAbsolutePath();
+                intent.putExtra(android.provider.MediaStore.EXTRA_OUTPUT, this.videoUri);
+                intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
             }
 
             if(Build.VERSION.SDK_INT > 7){
@@ -419,8 +431,8 @@ public class Capture extends CordovaPlugin {
     }
 
     public void onVideoActivityResult(Request req, Intent intent) {
-        if(videoUri != null) {
-            req.results.put(createMediaFile(videoUri));
+        if(this.videoUri != null) {
+            req.results.put(createMediaFileWithAbsolutePath(this.videoAbsolutePath));
         } else {
             Uri data = null;
 
@@ -500,6 +512,62 @@ public class Capture extends CordovaPlugin {
                 } else {
                     obj.put("type", VIDEO_3GPP);
                 }
+            } else {
+                obj.put("type", FileHelper.getMimeType(Uri.fromFile(fp), cordova));
+            }
+
+            obj.put("lastModifiedDate", fp.lastModified());
+            obj.put("size", fp.length());
+        } catch (JSONException e) {
+            // this will never happen
+            e.printStackTrace();
+        }
+        return obj;
+    }
+
+    /**
+     * Creates a JSONObject that represents a File from the Uri
+     *
+     * @param data the Uri of the audio/image/video
+     * @return a JSONObject that represents a File
+     * @throws IOException
+     */
+    private JSONObject createMediaFileWithAbsolutePath(String path) {
+        File fp = new File(path);
+        JSONObject obj = new JSONObject();
+
+        Class webViewClass = webView.getClass();
+        PluginManager pm = null;
+        try {
+            Method gpm = webViewClass.getMethod("getPluginManager");
+            pm = (PluginManager) gpm.invoke(webView);
+        } catch (NoSuchMethodException e) {
+        } catch (IllegalAccessException e) {
+        } catch (InvocationTargetException e) {
+        }
+        if (pm == null) {
+            try {
+                Field pmf = webViewClass.getField("pluginManager");
+                pm = (PluginManager)pmf.get(webView);
+            } catch (NoSuchFieldException e) {
+            } catch (IllegalAccessException e) {
+            }
+        }
+        FileUtils filePlugin = (FileUtils) pm.getPlugin("File");
+        LocalFilesystemURL url = filePlugin.filesystemURLforLocalPath(fp.getAbsolutePath());
+
+        try {
+            // File properties
+            obj.put("name", fp.getName());
+            obj.put("fullPath", Uri.fromFile(fp));
+            if (url != null) {
+                obj.put("localURL", url.toString());
+            }
+            // Because of an issue with MimeTypeMap.getMimeTypeFromExtension() all .3gpp files
+            // are reported as video/3gpp. I'm doing this hacky check of the URI to see if it
+            // is stored in the audio or video content store.
+            if (fp.getAbsoluteFile().toString().endsWith(".3gp") || fp.getAbsoluteFile().toString().endsWith(".3gpp")) {
+                obj.put("type", VIDEO_3GPP);
             } else {
                 obj.put("type", FileHelper.getMimeType(Uri.fromFile(fp), cordova));
             }
