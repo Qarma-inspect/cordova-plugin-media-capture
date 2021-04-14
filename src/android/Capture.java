@@ -25,7 +25,9 @@ import java.io.OutputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.text.SimpleDateFormat;
 import java.util.Arrays;
+import java.util.Date;
 
 import android.content.ActivityNotFoundException;
 import android.os.Build;
@@ -57,7 +59,7 @@ import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Environment;
 import android.provider.MediaStore;
-import android.support.v4.content.FileProvider;
+import androidx.core.content.FileProvider;
 import org.apache.cordova.BuildHelper;
 
 public class Capture extends CordovaPlugin {
@@ -85,9 +87,10 @@ public class Capture extends CordovaPlugin {
     private final PendingRequests pendingRequests = new PendingRequests();
 
     private int numPics;                            // Number of pictures before capture activity
-    private Uri imageUri;
-    private Uri videoUri;
+    private String audioAbsolutePath;
+    private String imageAbsolutePath;
     private String videoAbsolutePath;
+
     private String applicationId;
 
 
@@ -194,7 +197,7 @@ public class Capture extends CordovaPlugin {
     /**
      * Get the Image specific attributes
      *
-     * @param filePath path to the file
+     * @param fileUrl url pointing to the file
      * @param obj represents the Media File Data
      * @return a JSONObject that represents the Media File Data
      * @throws JSONException
@@ -243,6 +246,17 @@ public class Capture extends CordovaPlugin {
           try {
               Intent intent = new Intent(android.provider.MediaStore.Audio.Media.RECORD_SOUND_ACTION);
 
+              String timeStamp = new SimpleDateFormat("yyyyMMddHHmmssSSS").format(new Date());
+              String fileName = "AUDIO_" + timeStamp + ".wav";
+              File audio = new File(getTempDirectoryPath(), fileName);
+
+              Uri audioUri = FileProvider.getUriForFile(this.cordova.getActivity(),
+                      this.applicationId + ".cordova.plugin.mediacapture.provider",
+                      audio);
+              this.audioAbsolutePath = audio.getAbsolutePath();
+              intent.putExtra(android.provider.MediaStore.EXTRA_OUTPUT, audioUri);
+              intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+              LOG.d(LOG_TAG, "Recording an audio and saving to: " + this.audioAbsolutePath);
               this.cordova.startActivityForResult((CordovaPlugin) this, intent, req.requestCode);
           } catch (ActivityNotFoundException ex) {
               pendingRequests.resolveWithFailure(req, createErrorObject(CAPTURE_NOT_SUPPORTED, "No Activity found to handle Audio Capture."));
@@ -285,13 +299,17 @@ public class Capture extends CordovaPlugin {
 
             Intent intent = new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
 
-            ContentResolver contentResolver = this.cordova.getActivity().getContentResolver();
-            ContentValues cv = new ContentValues();
-            cv.put(MediaStore.Images.Media.MIME_TYPE, IMAGE_JPEG);
-            imageUri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv);
-            LOG.d(LOG_TAG, "Taking a picture and saving to: " + imageUri.toString());
+            String timeStamp = new SimpleDateFormat("yyyyMMddHHmmssSSS").format(new Date());
+            String fileName = "IMG_" + timeStamp + ".jpg";
+            File image = new File(getTempDirectoryPath(), fileName);
 
+            Uri imageUri = FileProvider.getUriForFile(this.cordova.getActivity(),
+                    this.applicationId + ".cordova.plugin.mediacapture.provider",
+                    image);
+            this.imageAbsolutePath = image.getAbsolutePath();
             intent.putExtra(android.provider.MediaStore.EXTRA_OUTPUT, imageUri);
+            intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            LOG.d(LOG_TAG, "Taking a picture and saving to: " + this.imageAbsolutePath);
 
             this.cordova.startActivityForResult((CordovaPlugin) this, intent, req.requestCode);
         }
@@ -306,33 +324,20 @@ public class Capture extends CordovaPlugin {
      * Sets up an intent to capture video.  Result handled by onActivityResult()
      */
     private void captureVideo(Request req) {
-        boolean needExternalStoragePermission =
-            !PermissionHelper.hasPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE);
-
-        boolean needCameraPermission = cameraPermissionInManifest &&
-            !PermissionHelper.hasPermission(this, Manifest.permission.CAMERA);
-        
-        if (needCameraPermission || needExternalStoragePermission) {
-            if (needCameraPermission) {
-                PermissionHelper.requestPermissions(this, req.requestCode, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.CAMERA});
-            } else if (needExternalStoragePermission) {
-                PermissionHelper.requestPermission(this, req.requestCode, Manifest.permission.WRITE_EXTERNAL_STORAGE);
-            } else {
-                PermissionHelper.requestPermission(this, req.requestCode, Manifest.permission.CAMERA);
-            }
+        if(cameraPermissionInManifest && !PermissionHelper.hasPermission(this, Manifest.permission.CAMERA)) {
+            PermissionHelper.requestPermission(this, req.requestCode, Manifest.permission.CAMERA);
         } else {
             Intent intent = new Intent(android.provider.MediaStore.ACTION_VIDEO_CAPTURE);
+            String timeStamp = new SimpleDateFormat("yyyyMMddHHmmssSSS").format(new Date());
+            String fileName = "VID_" + timeStamp + ".avi";
+            File movie = new File(getTempDirectoryPath(), fileName);
 
-            if(req.saveToGallery == 0) {
-                File movie = new File(getTempDirectoryPath(), "Capture.avi");
-
-                this.videoUri = FileProvider.getUriForFile(this.cordova.getActivity(),
-                    this.applicationId + ".cordova.plugin.camera.provider",
+            Uri videoUri = FileProvider.getUriForFile(this.cordova.getActivity(),
+                    this.applicationId + ".cordova.plugin.mediacapture.provider",
                     movie);
-                this.videoAbsolutePath = movie.getAbsolutePath();
-                intent.putExtra(android.provider.MediaStore.EXTRA_OUTPUT, this.videoUri);
-                intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-            }
+            this.videoAbsolutePath = movie.getAbsolutePath();
+            intent.putExtra(android.provider.MediaStore.EXTRA_OUTPUT, videoUri);
+            intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
 
             if(Build.VERSION.SDK_INT > 7){
                 intent.putExtra("android.intent.extra.durationLimit", req.duration);
@@ -401,10 +406,8 @@ public class Capture extends CordovaPlugin {
 
 
     public void onAudioActivityResult(Request req, Intent intent) {
-        // Get the uri of the audio clip
-        Uri data = intent.getData();
-        // create a file object from the uri
-        req.results.put(createMediaFile(data));
+        // create a file object from the audio absolute path
+        req.results.put(createMediaFileWithAbsolutePath(this.audioAbsolutePath));
 
         if (req.results.length() >= req.limit) {
             // Send Uri back to JavaScript for listening to audio
@@ -417,9 +420,7 @@ public class Capture extends CordovaPlugin {
 
     public void onImageActivityResult(Request req) {
         // Add image to results
-        req.results.put(createMediaFile(imageUri));
-
-        checkForDuplicateImage();
+        req.results.put(createMediaFileWithAbsolutePath(this.imageAbsolutePath));
 
         if (req.results.length() >= req.limit) {
             // Send Uri back to JavaScript for viewing image
@@ -431,30 +432,11 @@ public class Capture extends CordovaPlugin {
     }
 
     public void onVideoActivityResult(Request req, Intent intent) {
-        if(this.videoUri != null) {
+        if(this.videoAbsolutePath != null) {
             req.results.put(createMediaFileWithAbsolutePath(this.videoAbsolutePath));
         } else {
-            Uri data = null;
-
-            if (intent != null){
-                // Get the uri of the video clip
-                data = intent.getData();
-            }
-
-            if( data == null){
-                File movie = new File(getTempDirectoryPath(), "Capture.avi");
-                data = Uri.fromFile(movie);
-            }
-
-            // create a file object from the uri
-            if(data == null) {
-                pendingRequests.resolveWithFailure(req, createErrorObject(CAPTURE_NO_MEDIA_FILES, "Error: data is null"));
-            }
-            else {
-                req.results.put(createMediaFile(data));
-            }
+            pendingRequests.resolveWithFailure(req, createErrorObject(CAPTURE_NO_MEDIA_FILES, "Error: data is null"));
         }
-        
 
         if (req.results.length() >= req.limit) {
             // Send Uri back to JavaScript for viewing video
@@ -528,7 +510,7 @@ public class Capture extends CordovaPlugin {
     /**
      * Creates a JSONObject that represents a File from the Uri
      *
-     * @param data the Uri of the audio/image/video
+     * @param path the absolute path saved in FileProvider of the audio/image/video
      * @return a JSONObject that represents a File
      * @throws IOException
      */
