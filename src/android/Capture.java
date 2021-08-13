@@ -327,23 +327,28 @@ public class Capture extends CordovaPlugin {
         if(cameraPermissionInManifest && !PermissionHelper.hasPermission(this, Manifest.permission.CAMERA)) {
             PermissionHelper.requestPermission(this, req.requestCode, Manifest.permission.CAMERA);
         } else {
-            Intent intent = new Intent(android.provider.MediaStore.ACTION_VIDEO_CAPTURE);
-            String timeStamp = new SimpleDateFormat("yyyyMMddHHmmssSSS").format(new Date());
-            String fileName = "VID_" + timeStamp + ".avi";
-            File movie = new File(getTempDirectoryPath(), fileName);
+            try {
+                Intent intent = new Intent(android.provider.MediaStore.ACTION_VIDEO_CAPTURE);
+                String timeStamp = new SimpleDateFormat("yyyyMMddHHmmssSSS").format(new Date());
+                String fileName = "VID_" + timeStamp + ".avi";
+                File movie = new File(getTempDirectoryPath(), fileName);
 
-            Uri videoUri = FileProvider.getUriForFile(this.cordova.getActivity(),
-                    this.applicationId + ".cordova.plugin.mediacapture.provider",
-                    movie);
-            this.videoAbsolutePath = movie.getAbsolutePath();
-            intent.putExtra(android.provider.MediaStore.EXTRA_OUTPUT, videoUri);
-            intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                Uri videoUri = FileProvider.getUriForFile(this.cordova.getActivity(),
+                        this.applicationId + ".cordova.plugin.mediacapture.provider",
+                        movie);
+                this.videoAbsolutePath = movie.getAbsolutePath();
+                intent.putExtra(android.provider.MediaStore.EXTRA_OUTPUT, videoUri);
+                intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
 
-            if(Build.VERSION.SDK_INT > 7){
-                intent.putExtra("android.intent.extra.durationLimit", req.duration);
-                intent.putExtra("android.intent.extra.videoQuality", req.quality);
+                if(Build.VERSION.SDK_INT > 7){
+                    intent.putExtra("android.intent.extra.durationLimit", req.duration);
+                    intent.putExtra("android.intent.extra.videoQuality", req.quality);
+                }
+                this.cordova.startActivityForResult((CordovaPlugin) this, intent, req.requestCode);
+            } catch (Exception e) {
+                Log.d(LOG_TAG, e.getMessage());
+                e.printStackTrace();
             }
-            this.cordova.startActivityForResult((CordovaPlugin) this, intent, req.requestCode);
         }
     }
 
@@ -357,50 +362,54 @@ public class Capture extends CordovaPlugin {
      * @throws JSONException
      */
     public void onActivityResult(int requestCode, int resultCode, final Intent intent) {
-        final Request req = pendingRequests.get(requestCode);
+        try {
+            final Request req = pendingRequests.get(requestCode);
 
-        // Result received okay
-        if (resultCode == Activity.RESULT_OK) {
-            Runnable processActivityResult = new Runnable() {
-                @Override
-                public void run() {
-                    switch(req.action) {
-                        case CAPTURE_AUDIO:
-                            onAudioActivityResult(req, intent);
-                            break;
-                        case CAPTURE_IMAGE:
-                            onImageActivityResult(req);
-                            break;
-                        case CAPTURE_VIDEO:
-                            onVideoActivityResult(req, intent);
-                            break;
+            // Result received okay
+            if (resultCode == Activity.RESULT_OK) {
+                Runnable processActivityResult = new Runnable() {
+                    @Override
+                    public void run() {
+                        switch(req.action) {
+                            case CAPTURE_AUDIO:
+                                onAudioActivityResult(req, intent);
+                                break;
+                            case CAPTURE_IMAGE:
+                                onImageActivityResult(req);
+                                break;
+                            case CAPTURE_VIDEO:
+                                onVideoActivityResult(req, intent);
+                                break;
+                        }
                     }
-                }
-            };
+                };
 
-            this.cordova.getThreadPool().execute(processActivityResult);
-        }
-        // If canceled
-        else if (resultCode == Activity.RESULT_CANCELED) {
-            // If we have partial results send them back to the user
-            if (req.results.length() > 0) {
-                pendingRequests.resolveWithSuccess(req);
+                this.cordova.getThreadPool().execute(processActivityResult);
             }
-            // user canceled the action
+            // If canceled
+            else if (resultCode == Activity.RESULT_CANCELED) {
+                // If we have partial results send them back to the user
+                if (req.results.length() > 0) {
+                    pendingRequests.resolveWithSuccess(req);
+                }
+                // user canceled the action
+                else {
+                    pendingRequests.resolveWithFailure(req, createErrorObject(CAPTURE_NO_MEDIA_FILES, "Canceled."));
+                }
+            }
+            // If something else
             else {
-                pendingRequests.resolveWithFailure(req, createErrorObject(CAPTURE_NO_MEDIA_FILES, "Canceled."));
+                // If we have partial results send them back to the user
+                if (req.results.length() > 0) {
+                    pendingRequests.resolveWithSuccess(req);
+                }
+                // something bad happened
+                else {
+                    pendingRequests.resolveWithFailure(req, createErrorObject(CAPTURE_NO_MEDIA_FILES, "Did not complete!"));
+                }
             }
-        }
-        // If something else
-        else {
-            // If we have partial results send them back to the user
-            if (req.results.length() > 0) {
-                pendingRequests.resolveWithSuccess(req);
-            }
-            // something bad happened
-            else {
-                pendingRequests.resolveWithFailure(req, createErrorObject(CAPTURE_NO_MEDIA_FILES, "Did not complete!"));
-            }
+        } catch(Exception e) {
+            e.printStackTrace();
         }
     }
 
