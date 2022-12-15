@@ -100,8 +100,8 @@ xmlns:android="http://schemas.android.com/apk/res/android"
         <source-file src="src/android/PendingRequests.java" target-dir="src/org/apache/cordova/mediacapture" />
         <source-file src="src/android/FileProvider.java" target-dir="src/org/apache/cordova/mediacapture" />
         <source-file src="src/android/xml/mediacapture_provider_paths.xml" target-dir="res/xml" />
-
-
+        <source-file src="src/android/xml/locales_config.xml" target-dir="res/xml" />
+        
         <js-module src="www/android/init.js" name="init">
             <runs />
         </js-module>
